@@ -1,0 +1,56 @@
+# Frontend ignores
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+frontend/coverage/
+frontend/build/
+frontend/.DS_Store
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Backend ignores
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/*.log
+backend/.classpath
+backend/.project
+backend/.settings/
+backend/.idea/
+backend/*.iws
+backend/*.iml
+backend/*.ipr
+backend/HELP.md
+backend/.env
+backend/.vscode/
+backend/src/main/resources/application-local.properties
+backend/src/main/resources/application.properties
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Java error/crash logs
+hs_err_pid*.log
+replay_pid*.log
+
+# Test files
+test*.json
+test*.ps1
+
+# Uploads directory (contains user uploaded files)
+backend/uploads/*
+!backend/uploads/.gitkeep
+DORO-Budget-Tracker-backup/
