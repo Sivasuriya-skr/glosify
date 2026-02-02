@@ -1,0 +1,35 @@
+[33mcommit 3f857cec4d157fcc4123228423f66559fd5aaba3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Sivasuriya <sivasuriya6080@gmail.com>
+Commit: Sivasuriya <sivasuriya6080@gmail.com>
+
+    Project name changes
+
+[33mcommit 72ed02a4dc2ebfe3fb435ba85c3a97191870702d[m
+Author: Sivasuriya <sivasuriya6080@gmail.com>
+Commit: Sivasuriya <sivasuriya6080@gmail.com>
+
+    Remove backup clone from repository
+
+[33mcommit 1de9eb422fee01fc409c35beb7fb95ba0e38aaf3[m
+Author: Sivasuriya <sivasuriya6080@gmail.com>
+Commit: Sivasuriya <sivasuriya6080@gmail.com>
+
+    Remove submodule and add folder as regular files
+
+[33mcommit cf8f4fea0f1606b7971dcbdf2def5cd270922016[m
+Author: Sivasuriya <sivasuriya6080@gmail.com>
+Commit: Sivasuriya <sivasuriya6080@gmail.com>
+
+    2 time
+
+[33mcommit 8857a5fe87eff73028ac0657e243f2de7e55c49a[m
+Author: Sivasuriya <sivasuriya6080@gmail.com>
+Commit: Sivasuriya <sivasuriya6080@gmail.com>
+
+    Remove backup folder from repo and ignore it
+
+[33mcommit d01eb1848cc660ca8d8864a43bc62a6e6352148f[m
+Author: Sivasuriya <sivasuriya6080@gmail.com>
+Commit: Sivasuriya <sivasuriya6080@gmail.com>
+
+    Initial commit
