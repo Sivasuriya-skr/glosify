@@ -54,3 +54,4 @@ test*.ps1
 backend/uploads/*
 !backend/uploads/.gitkeep
 DORO-Budget-Tracker-backup/
+DORO Budget Tracker
