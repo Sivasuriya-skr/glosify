@@ -6,37 +6,34 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestTemplate;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 
 @Slf4j
 @Service
-public class OllamaService {
+public class GroqService {
 
-    private final WebClient webClient;
+    private final String apiKey;
+    private final String apiUrl;
     private final String model;
     private final ObjectMapper objectMapper;
-    private final int timeout;
+    private final RestTemplate restTemplate;
 
-    public OllamaService(
-            @Value("${ollama.base-url:http://localhost:11434}") String baseUrl,
-            @Value("${ollama.model:llama3.2:1b}") String model, // default set to installed model
-            @Value("${ollama.timeout:120000}") int timeout
+    public GroqService(
+            @Value("${groq.api.key}") String apiKey,
+            @Value("${groq.api.url:https://api.groq.com/openai/v1/chat/completions}") String apiUrl,
+            @Value("${groq.model:llama3-8b-8192}") String model
     ) {
+        this.apiKey = apiKey;
+        this.apiUrl = apiUrl;
         this.model = model;
-        this.timeout = timeout;
         this.objectMapper = new ObjectMapper();
-        this.webClient = WebClient.builder()
-                .baseUrl(baseUrl)
-                .build();
-        log.info("OllamaService initialized with model: {}, timeout: {}ms", model, timeout);
+        this.restTemplate = new RestTemplate();
+        log.info("GroqService initialized with model: {}", model);
     }
 
     public AIInsightResponse generateInsight(AIInsightRequest request) {
@@ -50,7 +47,7 @@ public class OllamaService {
             cleanRequest.setQuery(request.getQuery());
             cleanRequest.setContext(cleanContext);
 
-            // Predefined responses (no external call)
+            // Predefined responses (no external call needed)
             String predefined = getPredefinedResponse(cleanRequest);
             if (predefined != null) {
                 log.info("Using predefined response for query type");
@@ -62,30 +59,43 @@ public class OllamaService {
             }
 
             String prompt = buildPrompt(cleanRequest);
-            log.info("Full prompt sent to Ollama (truncated): {}", prompt.length() > 200 ? prompt.substring(0, 200) + "..." : prompt);
-
-            Map<String, Object> requestBody = Map.of(
-                    "model", model,
-                    "prompt", prompt,
-                    "stream", false
-            );
-
-            log.info("Sending request to Ollama at: /api/generate with timeout: {}ms", timeout);
+            log.info("Sending request to Groq API with model: {}", model);
             long startTime = System.currentTimeMillis();
 
-            String response = webClient.post()
-                    .uri("/api/generate")
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(timeout))
-                    .block();
+            // Build messages for Groq (OpenAI-compatible format)
+            Map<String, String> systemMsg = new HashMap<>();
+            systemMsg.put("role", "system");
+            systemMsg.put("content",
+                "You are a professional financial advisor for India. " +
+                "Always use the ₹ symbol. Provide structured financial analysis.");
+
+            Map<String, String> userMsg = new HashMap<>();
+            userMsg.put("role", "user");
+            userMsg.put("content", prompt);
+
+            // Build request body
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", model);
+            requestBody.put("messages", List.of(systemMsg, userMsg));
+            requestBody.put("max_tokens", 1024);
+
+            // Set headers
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            // Call Groq API
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    apiUrl, HttpMethod.POST, entity, Map.class
+            );
 
             long duration = System.currentTimeMillis() - startTime;
-            log.info("Received response from Ollama in {}ms", duration);
+            log.info("Received response from Groq in {}ms", duration);
 
-            if (response == null) {
-                log.error("Received null response from Ollama");
+            if (response.getBody() == null) {
+                log.error("Received null response from Groq");
                 return AIInsightResponse.builder()
                         .insight("I couldn't get a response from the AI service.")
                         .category("Error")
@@ -93,30 +103,31 @@ public class OllamaService {
                         .build();
             }
 
-            log.debug("Raw Ollama response length: {}", response.length());
+            // Extract reply from Groq response
+            List<Map> choices = (List<Map>) response.getBody().get("choices");
+            Map message = (Map) choices.get(0).get("message");
+            String aiRaw = (String) message.get("content");
 
-            return parseResponse(response);
+            log.debug("Raw Groq response length: {}", aiRaw != null ? aiRaw.length() : 0);
+
+            return parseResponse(aiRaw);
 
         } catch (Exception e) {
-            log.error("Error generating AI insight. Error type: {}, Message: {}", e.getClass().getSimpleName(), e.getMessage());
-            String errorMsg = e.getMessage() != null ? e.getMessage() : "";
-            if (e.getCause() != null && e.getCause().getMessage() != null) {
-                errorMsg += " (Cause: " + e.getCause().getMessage() + ")";
-            }
+            log.error("Error generating AI insight. Error type: {}, Message: {}",
+                    e.getClass().getSimpleName(), e.getMessage());
 
-            // Return a helpful fallback with structured format
             String fallbackInsight = """
                     **📊 Financial Analysis:**
                     1. Unable to fetch AI analysis right now due to connection issues.
                     2. Your financial data is still being tracked locally.
-                    
+
                     **💡 Recommendations:**
                     1. Track your expenses this week and identify the top 3 categories to cut back.
                     2. Aim to reduce discretionary spending by at least 10% this month.
                     3. Review your budget allocations to ensure they align with your goals.
 
                     **✅ Action Steps:**
-                    1. Check if Ollama AI service is running properly.
+                    1. Check your Groq API key and network connection.
                     2. Export transactions and categorize them today.
                     3. Set a simple weekly spending cap and review on Sundays.
                     """;
@@ -193,35 +204,30 @@ public class OllamaService {
         }
 
         if (!isFinancialQuery(query)) {
-            return "I'm your AI financial advisor, specialized only in money matters. Please ask me about budgeting, savings, investments, expenses, or financial planning. How can I help you with your finances today?";
+            return "I'm your AI financial advisor, specialized only in money matters. " +
+                   "Please ask me about budgeting, savings, investments, expenses, or financial planning. " +
+                   "How can I help you with your finances today?";
         }
 
         return null;
     }
 
     /**
-     * Parse raw response (JSON or plain text), normalize it to exact structure, and return AIInsightResponse.
+     * Parse raw response string and return AIInsightResponse.
      */
-    private AIInsightResponse parseResponse(String response) {
+    private AIInsightResponse parseResponse(String aiRaw) {
         try {
-            String aiRaw;
-            try {
-                JsonNode jsonNode = objectMapper.readTree(response);
-                if (jsonNode.has("response")) {
-                    aiRaw = jsonNode.get("response").asText();
-                } else if (jsonNode.has("output")) { // some variants
-                    aiRaw = jsonNode.get("output").asText();
-                } else {
-                    aiRaw = response;
-                }
-            } catch (Exception ex) {
-                aiRaw = response;
+            if (aiRaw == null) {
+                return AIInsightResponse.builder()
+                        .insight("AI analysis completed")
+                        .category("General")
+                        .recommendation("Review your financial data regularly.")
+                        .build();
             }
 
             log.debug("Raw AI output (pre-normalize): {}", aiRaw);
 
             String normalized = normalizeAiOutput(aiRaw);
-
             String shortRec = extractRecommendationSnippet(normalized);
 
             return AIInsightResponse.builder()
@@ -241,21 +247,17 @@ public class OllamaService {
     }
 
     /**
-     * Normalize the model output into the exact sections with bold headings and * bullets.
+     * Normalize the model output into the exact sections with bold headings and numbered bullets.
      */
     private String normalizeAiOutput(String raw) {
         if (raw == null) return "";
 
         String text = decodeHtmlEntities(raw).replace("\r", "\n").replace("\t", " ");
-        // Convert various bullets to "* "
         text = text.replaceAll("(?m)^[\\s]*[-–—]\\s+", "* ");
         text = text.replaceAll("(?m)^\\s*•\\s+", "* ");
-        // Collapse multiple blank lines to two newlines
         text = text.replaceAll("\\s*\\n\\s*\\n\\s*", "\n\n");
-        // Ensure consistent spacing
         text = text.trim();
 
-        String lower = text.toLowerCase();
         int aIdx = indexOfRegexCaseInsensitive(text, "financial analysis");
         int rIdx = indexOfRegexCaseInsensitive(text, "recommendations");
         int actIdx = indexOfRegexCaseInsensitive(text, "action steps");
@@ -278,7 +280,6 @@ public class OllamaService {
             actions = text.substring(actIdx);
         }
 
-        // If no headings found, attempt heuristic split by double newline
         if (analysis.isBlank() && recommendations.isBlank() && actions.isBlank()) {
             String[] parts = text.split("\\n\\s*\\n");
             if (parts.length >= 3) {
@@ -286,7 +287,6 @@ public class OllamaService {
                 recommendations = parts[1];
                 actions = String.join("\n", Arrays.copyOfRange(parts, 2, parts.length));
             } else {
-                // fallback: put whole text into analysis
                 analysis = text;
             }
         }
@@ -296,15 +296,9 @@ public class OllamaService {
         String cleanActions = ensureHeadingAndBullets("Action Steps", actions);
 
         StringBuilder sb = new StringBuilder();
-        if (!cleanAnalysis.isBlank()) {
-            sb.append(cleanAnalysis.trim()).append("\n\n");
-        }
-        if (!cleanRecommendations.isBlank()) {
-            sb.append(cleanRecommendations.trim()).append("\n\n");
-        }
-        if (!cleanActions.isBlank()) {
-            sb.append(cleanActions.trim());
-        }
+        if (!cleanAnalysis.isBlank()) sb.append(cleanAnalysis.trim()).append("\n\n");
+        if (!cleanRecommendations.isBlank()) sb.append(cleanRecommendations.trim()).append("\n\n");
+        if (!cleanActions.isBlank()) sb.append(cleanActions.trim());
 
         return sb.toString().trim();
     }
@@ -314,24 +308,21 @@ public class OllamaService {
         return text.toLowerCase().indexOf(phrase.toLowerCase());
     }
 
-    /**
-     * Ensure the section begins with bold heading and contains numbered points.
-     * If numbers missing, split into sentences to create numbered points.
-     */
     private String ensureHeadingAndBullets(String heading, String sectionText) {
         if (sectionText == null) return "";
 
         String t = sectionText.trim();
-        // Remove any leading header variants (including emojis)
-        t = t.replaceAll("(?i)^\\*?\\*?[📊💡✅\\s]*" + Pattern.quote(heading.toLowerCase().replace("📊 ", "").replace("💡 ", "").replace("✅ ", "")) + "[:\\s]*", "");
-        // Split into lines and convert to numbered points
+        t = t.replaceAll("(?i)^\\*?\\*?[📊💡✅\\s]*" +
+                Pattern.quote(heading.toLowerCase()
+                        .replace("📊 ", "").replace("💡 ", "").replace("✅ ", "")) +
+                "[:\\s]*", "");
+
         String[] rawLines = t.split("\\n");
         List<String> points = new ArrayList<>();
 
         for (String line : rawLines) {
             String s = line.trim();
             if (s.isEmpty()) continue;
-            // Handle existing numbered points (1. 2. 3.)
             if (s.matches("^\\d+\\.\\s+.*")) {
                 points.add(s.replaceFirst("^\\d+\\.\\s+", "").trim());
                 continue;
@@ -344,7 +335,6 @@ public class OllamaService {
                 points.add(s.replaceFirst("^[\\-•–—]\\s+", "").trim());
                 continue;
             }
-            // split sentences if line is long
             String[] sentences = s.split("(?<=[.?!])\\s+");
             for (String sent : sentences) {
                 String ss = sent.trim();
@@ -353,13 +343,10 @@ public class OllamaService {
         }
 
         if (points.isEmpty()) return "";
-
-        // limit points to 6 to avoid overly long responses
         if (points.size() > 6) points = points.subList(0, 6);
 
-        // Add emoji based on heading type
-        String emoji = heading.contains("Analysis") ? "📊 " : 
-                       heading.contains("Recommendation") ? "💡 " : 
+        String emoji = heading.contains("Analysis") ? "📊 " :
+                       heading.contains("Recommendation") ? "💡 " :
                        heading.contains("Action") ? "✅ " : "";
 
         StringBuilder out = new StringBuilder();
@@ -371,9 +358,6 @@ public class OllamaService {
         return out.toString().trim();
     }
 
-    /**
-     * Extract a short recommendation snippet (first recommendation point).
-     */
     private String extractRecommendationSnippet(String normalized) {
         if (normalized == null) return "";
         int idx = normalized.indexOf("**💡 Recommendations:**");
@@ -383,7 +367,6 @@ public class OllamaService {
             String[] lines = rest.split("\\n");
             for (String line : lines) {
                 line = line.trim();
-                // Handle numbered points (1. 2. 3.)
                 if (line.matches("^\\d+\\.\\s+.*")) {
                     return line.replaceFirst("^\\d+\\.\\s+", "").trim();
                 }
@@ -392,7 +375,6 @@ public class OllamaService {
                 }
             }
         }
-        // fallback
         String plain = normalized.replaceAll("\\n", " ");
         return plain.length() > 120 ? plain.substring(0, 117) + "..." : plain;
     }
@@ -410,7 +392,6 @@ public class OllamaService {
 
     private String decodeHtmlEntities(String text) {
         if (text == null) return null;
-
         return text
                 .replace("&gt;", ">")
                 .replace("&lt;", "<")
@@ -429,21 +410,5 @@ public class OllamaService {
                 .replace("&#8220;", "\"")
                 .replace("&#8221;", "\"")
                 .replace("&#8230;", "...");
-    }
-
-    private String[] splitResponse(String response) {
-        response = decodeHtmlEntities(response);
-
-        if (response.length() > 50) {
-            return new String[]{
-                    response.trim(),
-                    "Review and implement these financial strategies for better money management."
-            };
-        }
-
-        return new String[]{
-                response.trim(),
-                "Consider these suggestions for improved financial health."
-        };
     }
 }
