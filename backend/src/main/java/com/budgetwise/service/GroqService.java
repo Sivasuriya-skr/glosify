@@ -40,26 +40,26 @@ public class GroqService {
         try {
             String cleanContext = decodeHtmlEntities(request.getContext());
 
-            log.info("Generating AI insight for query: {}", request.getQuery());
+            log.info("📝 Generating AI insight for query: '{}'", request.getQuery());
             log.debug("Financial context: {}", cleanContext);
 
             AIInsightRequest cleanRequest = new AIInsightRequest();
             cleanRequest.setQuery(request.getQuery());
             cleanRequest.setContext(cleanContext);
 
-            // Predefined responses (no external call needed)
+            // Only use predefined responses for greetings, not for financial queries
             String predefined = getPredefinedResponse(cleanRequest);
             if (predefined != null) {
-                log.info("Using predefined response for query type");
+                log.info("✓ Using predefined greeting response");
                 return AIInsightResponse.builder()
                         .insight(predefined)
                         .category(extractCategory(predefined))
-                        .recommendation("Follow the above suggestions for better financial management.")
+                        .recommendation("Feel free to ask me about your finances!")
                         .build();
             }
 
             String prompt = buildPrompt(cleanRequest);
-            log.info("Sending request to Groq API with model: {}", model);
+            log.info("🔗 Calling Groq API with model: {} (API URL: {})", model, apiUrl);
             long startTime = System.currentTimeMillis();
 
             // Build messages for Groq (OpenAI-compatible format)
@@ -92,10 +92,10 @@ public class GroqService {
             );
 
             long duration = System.currentTimeMillis() - startTime;
-            log.info("Received response from Groq in {}ms", duration);
+            log.info("✅ Groq API responded successfully in {}ms", duration);
 
             if (response.getBody() == null) {
-                log.error("Received null response from Groq");
+                log.error("❌ Groq returned null response body");
                 return AIInsightResponse.builder()
                         .insight("I couldn't get a response from the AI service.")
                         .category("Error")
@@ -105,20 +105,33 @@ public class GroqService {
 
             // Extract reply from Groq response
             List<Map> choices = (List<Map>) response.getBody().get("choices");
+            if (choices == null || choices.isEmpty()) {
+                log.error("❌ No choices in Groq response");
+                return AIInsightResponse.builder()
+                        .insight("I couldn't generate a response. Please try again.")
+                        .category("Error")
+                        .recommendation("Please try again in a moment.")
+                        .build();
+            }
+            
             Map message = (Map) choices.get(0).get("message");
             String aiRaw = (String) message.get("content");
-
-            log.debug("Raw Groq response length: {}", aiRaw != null ? aiRaw.length() : 0);
+            log.info("✓ Received Groq response with {} characters", aiRaw != null ? aiRaw.length() : 0);
+            log.debug("Raw Groq response: {}", aiRaw);
 
             return parseResponse(aiRaw);
 
         } catch (Exception e) {
-            log.error("Error generating AI insight. Error type: {}, Message: {}",
-                    e.getClass().getSimpleName(), e.getMessage());
+            log.error("❌ Error generating AI insight from Groq API", e);
+            log.error("   Error type: {}", e.getClass().getSimpleName());
+            log.error("   Error message: {}", e.getMessage());
+            if (e.getCause() != null) {
+                log.error("   Root cause: {}", e.getCause().getMessage());
+            }
 
             String fallbackInsight = """
                     **📊 Financial Analysis:**
-                    1. Unable to fetch AI analysis right now due to connection issues.
+                    1. Unable to fetch AI analysis right now due to Groq API connection issues.
                     2. Your financial data is still being tracked locally.
 
                     **💡 Recommendations:**

@@ -4,7 +4,7 @@ import com.budgetwise.dto.AIInsightRequest;
 import com.budgetwise.dto.AIInsightResponse;
 import com.budgetwise.dto.TransactionResponse;
 import com.budgetwise.model.User;
-import com.budgetwise.service.OllamaService;
+import com.budgetwise.service.GroqService;
 import com.budgetwise.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +20,7 @@ import java.util.List;
 @CrossOrigin(origins = "http://localhost:3000")
 public class AIController {
 
-    private final OllamaService ollamaService;
+    private final GroqService groqService;
     private final TransactionService transactionService;
 
     @PostMapping("/insights")
@@ -33,7 +33,7 @@ public class AIController {
         String context = buildFinancialContext(transactionResponses);
         
         request.setContext(context);
-        AIInsightResponse response = ollamaService.generateInsight(request);
+        AIInsightResponse response = groqService.generateInsight(request);
         
         return ResponseEntity.ok(response);
     }
@@ -48,7 +48,7 @@ public class AIController {
                 .context(context)
                 .build();
                 
-        AIInsightResponse response = ollamaService.generateInsight(request);
+        AIInsightResponse response = groqService.generateInsight(request);
         return ResponseEntity.ok(response);
     }
 
@@ -62,7 +62,7 @@ public class AIController {
                 .context(context)
                 .build();
                 
-        AIInsightResponse response = ollamaService.generateInsight(request);
+        AIInsightResponse response = groqService.generateInsight(request);
         return ResponseEntity.ok(response);
     }
 
